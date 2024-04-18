@@ -1,34 +1,22 @@
-Version: 1.0 Author: keyle Update: 2024-04-19 00:26:04
-
 {
-    "2.png": {
+    "middle.png": {
         "top_left": {
-            "x": 304,
-            "y": 149
+            "x": 18,
+            "y": 327
         },
         "bottom_right": {
-            "x": 1237,
-            "y": 838
+            "x": 329,
+            "y": 658
         }
     },
-    "3.png": {
+    "small.png": {
         "top_left": {
-            "x": 304,
-            "y": 149
+            "x": 265,
+            "y": 231
         },
         "bottom_right": {
-            "x": 1237,
-            "y": 838
-        }
-    },
-    "1.png": {
-        "top_left": {
-            "x": 304,
-            "y": 149
-        },
-        "bottom_right": {
-            "x": 1237,
-            "y": 838
+            "x": 412,
+            "y": 343
         }
     }
 }
