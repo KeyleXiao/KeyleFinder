@@ -3,27 +3,27 @@ using System;
 using System.Runtime.InteropServices;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
-using Python.Runtime;
-using UnityEditor.Scripting.Python;
+//using Python.Runtime;
+//using UnityEditor.Scripting.Python;
 
 public class InitAPP : MonoBehaviour
 {
     public TextMesh text;
     private void Start()
     {
-        PythonRunner.EnsureInitialized();
-        using (Py.GIL())
-        {
-            try
-            {
-                dynamic sys = Py.Import("sys");
-                UnityEngine.Debug.Log($"python version: {sys.version}");
-            }
-            catch (PythonException e)
-            {
-                UnityEngine.Debug.LogException(e);
-            }
-        }
+        //PythonRunner.EnsureInitialized();
+        //using (Py.GIL())
+        //{
+        //    try
+        //    {
+        //        dynamic sys = Py.Import("sys");
+        //        UnityEngine.Debug.Log($"python version: {sys.version}");
+        //    }
+        //    catch (PythonException e)
+        //    {
+        //        UnityEngine.Debug.LogException(e);
+        //    }
+        //}
     }
 }
 
