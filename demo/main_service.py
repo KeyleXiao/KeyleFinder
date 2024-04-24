@@ -159,6 +159,7 @@ class KCPDemoApp:
 
 if __name__ == "__main__":
     app = KCPDemoApp()
-    # app.add_message_to_list("Test Message 1")
-    # app.add_message_to_list("Test Message 2")
+    app.add_message_to_list("Test Message 1")
+    app.add_message_to_list("Test Message 2")
     app.start()
+
