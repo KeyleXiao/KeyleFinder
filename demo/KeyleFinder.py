@@ -2,6 +2,7 @@ import os
 import cv2
 import json
 
+
 class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
