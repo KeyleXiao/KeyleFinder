@@ -6,7 +6,7 @@ public class ConnectTool
 {
     static ConnectTool instance;
 
-    private ConnectTool() { Task task = StartAsync(); }
+    private ConnectTool() {  }
 
     public static ConnectTool ins 
     {
