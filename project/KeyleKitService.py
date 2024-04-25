@@ -71,8 +71,8 @@ class TCPServer:
                 # print(f"Received from client: {data.decode()}")
                 self.ui_instance.receive_message(data)
                 # 发送消息回客户端
-                message = input("Enter message to send back to client: ")
-                self.client_socket.sendall(message.encode())
+                # message = input("Enter message to send back to client: ")
+                # self.client_socket.sendall(message.encode())
 
         except ConnectionResetError:
             print("Client disconnected.")
@@ -256,14 +256,15 @@ class KeyleKitService:
         self.add_message_to_list(message)
 
 
-    def send_message(self, client_socket, message):
+    def send_message(self, message):
         message = self.send_text.get("1.0", tk.END).strip()
         if message:
             print("Sending message:", message)
             # 在这里可以实现发送消息到 Unity 的代码
             self.send_text.delete("1.0", tk.END)
             # 发送消息
-            client_socket.sendall(message.encode('utf-8'))
+            # client_socket.sendall(message.encode('utf-8'))
+            self.TCPServer.sendall(message.encode())
 
 
 
