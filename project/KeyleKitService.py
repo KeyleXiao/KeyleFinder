@@ -128,6 +128,7 @@ class KeyleKitService:
         parent_y = (self.root.winfo_screenheight() - parent_image_height) // 2
 
         self.show_image(self.parent_image, parent_x, parent_y,True)
+        self.send_text.delete("1.0", "end")#加载图片之前先清理文本框
 
         # 加载其他图像并与母图进行比对
         for url in images[1:]:
@@ -138,11 +139,7 @@ class KeyleKitService:
         # 创建新窗口
         popup_window = tk.Toplevel(self.root)
         popup_window.title("Popup Image")
-        if low == True:
-            popup_window.wm_attributes('-topmost', True)
-        else:
-            popup_window.lift()
-
+        popup_window.wm_attributes('-topmost', not low)
 
         # 创建图片对象
         photo = ImageTk.PhotoImage(image)
@@ -175,8 +172,8 @@ class KeyleKitService:
 
         # 打印偏移值
         print("偏移值：", offset_x, offset_y)
-        self.send_text.delete("1.0", "end")
-        self.send_text.insert(tk.END, f'{offset_x}|{offset_y}')
+        # self.send_text.delete("1.0", "end")
+        self.send_text.insert(tk.END, f'{offset_x}|{offset_y}\n')
         self.send_message()
 
         # 显示图像
