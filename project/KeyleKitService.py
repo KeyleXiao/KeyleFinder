@@ -92,7 +92,7 @@ class TCPServer:
             return False  # 如果获取对方地址信息时出现 OSError，则说明连接已断开
 
     def sendall(self,message):
-        if self.is_socket_connected(self.client_socket):
+        if self.client_socket is not None and self.is_socket_connected(self.client_socket):
             self.client_socket.sendall(message.encode())
 
     def stop(self):
@@ -133,7 +133,6 @@ class KeyleKitService:
         for url in images[1:]:
             image = Image.open(url)
             self.compare_and_show(image, parent_x, parent_y)
-            time.sleep(2)  #
 
     def show_image(self, image, x, y,low=False):
         # 创建新窗口
@@ -176,6 +175,9 @@ class KeyleKitService:
 
         # 打印偏移值
         print("偏移值：", offset_x, offset_y)
+        self.send_text.delete("1.0", "end")
+        self.send_text.insert(tk.END, f'{offset_x}|{offset_y}')
+        self.send_message()
 
         # 显示图像
         self.show_image(image, sub_x, sub_y)
