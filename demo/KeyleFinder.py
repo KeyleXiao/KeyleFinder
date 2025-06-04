@@ -14,14 +14,16 @@ class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
 
-    def _show_preview(self, single_image, dst_points, angle=None):
-        """Overlay ``single_image`` on ``self.big_image`` with rotation only.
+    def _show_preview(self, single_image, dst_points, angle=None, scale=None):
+        """Overlay ``single_image`` on ``self.big_image``.
 
         ``dst_points`` should contain the four corner points of the matched
         region in clockwise order. The preview draws the outline of the match and
         pastes the element rotated to ``angle`` degrees at the center of this
         region without applying perspective distortion. When ``angle`` is
-        ``None`` it will be estimated from the top edge of ``dst_points``.
+        ``None`` it will be estimated from the top edge of ``dst_points``.  A
+        custom ``scale`` value can be supplied to override the automatically
+        calculated one when previewing the overlay.
         """
 
         preview = self.big_image.copy()
@@ -37,11 +39,12 @@ class KeyleFinder:
             angle = np.degrees(np.arctan2(dy, dx))
 
         # compute scale from matched width/height
-        dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
-        dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
-        scale_x = dst_w / w
-        scale_y = dst_h / h
-        scale = (scale_x + scale_y) / 2.0
+        if scale is None:
+            dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
+            dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
+            scale_x = dst_w / w
+            scale_y = dst_h / h
+            scale = (scale_x + scale_y) / 2.0
 
         # OpenCV uses positive values for counter-clockwise rotation, whereas the
         # angle derived from the image has clockwise positive orientation.
@@ -79,7 +82,7 @@ class KeyleFinder:
         """
         single_image = cv2.imread(single_image_path)
         if single_image is None or self.big_image is None:
-            return None, None, None
+            return None, None, None, None
 
         single_gray = cv2.cvtColor(single_image, cv2.COLOR_BGR2GRAY)
         big_gray = cv2.cvtColor(self.big_image, cv2.COLOR_BGR2GRAY)
@@ -88,7 +91,7 @@ class KeyleFinder:
         kp1, des1 = orb.detectAndCompute(single_gray, None)
         kp2, des2 = orb.detectAndCompute(big_gray, None)
         if des1 is None or des2 is None:
-            return None, None, None
+            return None, None, None, None
 
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
         matches = bf.knnMatch(des1, des2, k=2)
@@ -99,14 +102,14 @@ class KeyleFinder:
                 good.append(m)
 
         if len(good) < 4:
-            return None, None, None
+            return None, None, None, None
 
         src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         if M is None:
-            return None, None, None
+            return None, None, None, None
 
         h, w = single_gray.shape
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
@@ -128,10 +131,16 @@ class KeyleFinder:
         dy = dst[1, 0, 1] - dst[0, 0, 1]
         angle = np.degrees(np.arctan2(dy, dx))
 
-        if show_preview:
-            self._show_preview(single_image, dst.reshape(4, 2), angle)
+        dst_w = np.linalg.norm(dst[1] - dst[0])
+        dst_h = np.linalg.norm(dst[3] - dst[0])
+        scale_x = dst_w / w
+        scale_y = dst_h / h
+        scale = float((scale_x + scale_y) / 2.0)
 
-        return top_left, bottom_right, float(angle)
+        if show_preview:
+            self._show_preview(single_image, dst.reshape(4, 2), angle, scale)
+
+        return top_left, bottom_right, float(angle), scale
     
     def match(self, single_image_path, mode=cv2.TM_CCOEFF_NORMED, show_preview=False):
         single_image = cv2.imread(single_image_path)
@@ -182,7 +191,8 @@ def match_images(layer_image, other_images, mode=cv2.TM_CCOEFF_NORMED, show_prev
             matches[os.path.basename(other_image)] = {
                 "top_left": {"x": top_left[0], "y": top_left[1]},
                 "bottom_right": {"x": bottom_right[0], "y": bottom_right[1]},
-                "angle": angle
+                "angle": angle,
+                "scale": 1.0
             }
     return matches
 
@@ -194,14 +204,15 @@ def match_images_with_order(layer_image, other_images, show_preview=False):
     matches = {}
     path_map = {}
     for other_image in other_images:
-        top_left, bottom_right, angle = finder.match_feature(other_image, show_preview)
+        top_left, bottom_right, angle, scale = finder.match_feature(other_image, show_preview)
         if top_left is not None and bottom_right is not None:
             name = os.path.basename(other_image)
             path_map[name] = other_image
             matches[name] = {
                 "top_left": {"x": top_left[0], "y": top_left[1]},
                 "bottom_right": {"x": bottom_right[0], "y": bottom_right[1]},
-                "angle": angle
+                "angle": angle,
+                "scale": scale
             }
 
     order = determine_layer_order(finder.big_image, matches, path_map)
@@ -297,6 +308,3 @@ def get_image_size(image_path):
 if __name__ == "__main__":
     # 使用 ORB 特征匹配并计算图层顺序，结果将包含每个切片在大图中的旋转角度
     process_directory(show_preview=False, use_feature=True)
-=======
-
-
