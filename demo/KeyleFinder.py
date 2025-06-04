@@ -19,8 +19,9 @@ class KeyleFinder:
 
         ``dst_points`` should contain the four corner points of the matched
         region in clockwise order. ``angle`` and ``scale`` are kept for backward
-        compatibility but the overlay is generated using a perspective
-        transformation so that the result fits the detected region exactly.
+        compatibility but the overlay is generated using an affine
+        transformation (rotation + uniform scale) so that the overlay is not
+        distorted by perspective.
         """
 
         preview = self.big_image.copy()
@@ -42,11 +43,15 @@ class KeyleFinder:
             scale_y = dst_h / h
             scale = (scale_x + scale_y) / 2.0
 
-        src_pts = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
-        dst_pts = np.float32(dst_points)
-        persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
-        overlay = cv2.warpPerspective(
-            single_image, persp, (self.big_image.shape[1], self.big_image.shape[0])
+        # Compute affine transform: rotate + scale around the center of the
+        # small image then translate it so that its center aligns with the
+        # detected region center.
+        dst_center = tuple(np.mean(dst_points, axis=0))
+        rot = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
+        rot[0, 2] += dst_center[0] - w / 2
+        rot[1, 2] += dst_center[1] - h / 2
+        overlay = cv2.warpAffine(
+            single_image, rot, (self.big_image.shape[1], self.big_image.shape[0])
         )
 
         gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
