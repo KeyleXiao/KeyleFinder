@@ -297,4 +297,4 @@ def get_image_size(image_path):
 # 示例用法
 if __name__ == "__main__":
     # 使用 ORB 特征匹配并计算图层顺序，结果将包含每个切片在大图中的旋转角度
-    process_directory(use_feature=True)
+    process_directory(show_preview=True, use_feature=True)
