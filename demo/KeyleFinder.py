@@ -8,6 +8,43 @@ class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
 
+    def _show_preview(self, single_image, dst_points):
+        """Overlay ``single_image`` on ``self.big_image`` using ``dst_points``.
+
+        ``dst_points`` should contain four corner points of the matched region
+        in clockwise order. The function draws the outline and a cross helper on
+        the preview image for visual verification.
+        """
+        preview = self.big_image.copy()
+
+        # Draw contour
+        cv2.polylines(preview, [np.int32(dst_points)], True, (0, 255, 0), 2)
+
+        # Compute perspective transform to warp the element onto the big image
+        h, w = single_image.shape[:2]
+        src_pts = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
+        M = cv2.getPerspectiveTransform(src_pts, dst_points.astype(np.float32))
+
+        overlay = cv2.warpPerspective(single_image, M,
+                                      (self.big_image.shape[1],
+                                       self.big_image.shape[0]))
+
+        gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+        inv_mask = cv2.bitwise_not(mask)
+
+        bg = cv2.bitwise_and(preview, preview, mask=inv_mask)
+        fg = cv2.bitwise_and(overlay, overlay, mask=mask)
+        preview = cv2.add(bg, fg)
+
+        # Draw helper cross at the center
+        center = tuple(np.mean(dst_points, axis=0).astype(int))
+        cv2.drawMarker(preview, center, (255, 0, 0), cv2.MARKER_CROSS, 20, 2)
+
+        cv2.imshow('Located Image', preview)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
     def match_feature(self, single_image_path, show_preview=False):
         """Match image using ORB feature detection, allowing partial occlusion.
         Returns the bounding box of the matched area and the rotation angle
@@ -59,11 +96,7 @@ class KeyleFinder:
         angle = np.degrees(np.arctan2(dy, dx))
 
         if show_preview:
-            preview = self.big_image.copy()
-            cv2.polylines(preview, [np.int32(dst)], True, (0, 255, 0), 2)
-            cv2.imshow('Located Image', preview)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+            self._show_preview(single_image, dst.reshape(4, 2))
 
         return top_left, bottom_right, float(angle)
     
@@ -87,13 +120,13 @@ class KeyleFinder:
         bottom_right = (top_left[0] + w, top_left[1] + h)
         
         if show_preview:
-            # 在大图中标记出单独图像的位置
-            marked_image = self.big_image.copy()
-            cv2.rectangle(marked_image, top_left, bottom_right, (0, 255, 0), 2)
-            # 显示标记后的大图
-            cv2.imshow('Located Image', marked_image)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+            dst = np.float32([
+                [top_left[0], top_left[1]],
+                [top_left[0] + w - 1, top_left[1]],
+                [top_left[0] + w - 1, top_left[1] + h - 1],
+                [top_left[0], top_left[1] + h - 1]
+            ])
+            self._show_preview(single_image, dst)
         
         return top_left, bottom_right, 0.0
 
