@@ -15,15 +15,12 @@ class KeyleFinder:
         self.big_image = cv2.imread(big_image_path)
 
     def _show_preview(self, single_image, dst_points, angle=None, scale=None):
-        """Overlay ``single_image`` on ``self.big_image``.
+        """Preview the match by overlaying ``single_image`` on ``self.big_image``.
 
         ``dst_points`` should contain the four corner points of the matched
-        region in clockwise order. The preview draws the outline of the match and
-        pastes the element rotated to ``angle`` degrees at the center of this
-        region without applying perspective distortion. When ``angle`` is
-        ``None`` it will be estimated from the top edge of ``dst_points``.  A
-        custom ``scale`` value can be supplied to override the automatically
-        calculated one when previewing the overlay.
+        region in clockwise order. ``angle`` and ``scale`` are kept for backward
+        compatibility but the overlay is generated using a perspective
+        transformation so that the result fits the detected region exactly.
         """
 
         preview = self.big_image.copy()
@@ -38,7 +35,6 @@ class KeyleFinder:
             dy = dst_points[1][1] - dst_points[0][1]
             angle = np.degrees(np.arctan2(dy, dx))
 
-        # compute scale from matched width/height
         if scale is None:
             dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
             dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
@@ -46,17 +42,11 @@ class KeyleFinder:
             scale_y = dst_h / h
             scale = (scale_x + scale_y) / 2.0
 
-        # OpenCV uses positive values for counter-clockwise rotation, whereas the
-        # angle derived from the image has clockwise positive orientation.
-        M = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, scale)
-
-        center = np.mean(dst_points, axis=0)
-        M[0, 2] += center[0] - w / 2
-        M[1, 2] += center[1] - h / 2
-
-        overlay = cv2.warpAffine(
-            single_image, M,
-            (self.big_image.shape[1], self.big_image.shape[0])
+        src_pts = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
+        dst_pts = np.float32(dst_points)
+        persp = cv2.getPerspectiveTransform(src_pts, dst_pts)
+        overlay = cv2.warpPerspective(
+            single_image, persp, (self.big_image.shape[1], self.big_image.shape[0])
         )
 
         gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
@@ -75,7 +65,7 @@ class KeyleFinder:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    def match_feature(self, single_image_path, show_preview=False):
+    def match_feature(self, single_image_path, show_preview=True):
         """Match image using ORB feature detection, allowing partial occlusion.
         Returns the bounding box of the matched area and the rotation angle
         (in degrees) of the found image relative to its original orientation.
@@ -142,7 +132,7 @@ class KeyleFinder:
 
         return top_left, bottom_right, float(angle), scale
     
-    def match(self, single_image_path, mode=cv2.TM_CCOEFF_NORMED, show_preview=False):
+    def match(self, single_image_path, mode=cv2.TM_CCOEFF_NORMED, show_preview=True):
         single_image = cv2.imread(single_image_path)
         result = cv2.matchTemplate(self.big_image, single_image, mode)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
@@ -182,7 +172,7 @@ def find_layer_images(directory=os.getcwd(), layer_filename="layer.png"):
             other_images.append(os.path.join(directory, file))
     return layer_images, other_images
 
-def match_images(layer_image, other_images, mode=cv2.TM_CCOEFF_NORMED, show_preview=False):
+def match_images(layer_image, other_images, mode=cv2.TM_CCOEFF_NORMED, show_preview=True):
     finder = KeyleFinder(layer_image)
     matches = {}
     for other_image in other_images:
@@ -196,7 +186,7 @@ def match_images(layer_image, other_images, mode=cv2.TM_CCOEFF_NORMED, show_prev
             }
     return matches
 
-def match_images_with_order(layer_image, other_images, show_preview=False):
+def match_images_with_order(layer_image, other_images, show_preview=True):
     """Match images allowing occlusion and calculate layering order.
     The rotation angle of each match is also recorded.
     """
@@ -274,7 +264,7 @@ def save_matches(matches, output_file):
     with open(output_file, 'w') as f:
         json.dump(matches, f, indent=4)
 
-def process_directory(directory=os.getcwd(), recursive=True, show_preview=False, use_feature=False):
+def process_directory(directory=os.getcwd(), recursive=True, show_preview=True, use_feature=False):
     layer_images, other_images = find_layer_images(directory)
     other_images.sort(key=lambda x: get_image_size(x), reverse=True)
 
@@ -307,4 +297,4 @@ def get_image_size(image_path):
 # 示例用法
 if __name__ == "__main__":
     # 使用 ORB 特征匹配并计算图层顺序，结果将包含每个切片在大图中的旋转角度
-    process_directory(show_preview=False, use_feature=True)
+    process_directory(show_preview=True, use_feature=True)
