@@ -1,11 +1,63 @@
 import os
 import cv2
 import json
+import numpy as np
 
 
 class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
+
+    def match_feature(self, single_image_path, show_preview=False):
+        """Match image using ORB feature detection, allowing partial occlusion."""
+        single_image = cv2.imread(single_image_path)
+        if single_image is None or self.big_image is None:
+            return None, None
+
+        single_gray = cv2.cvtColor(single_image, cv2.COLOR_BGR2GRAY)
+        big_gray = cv2.cvtColor(self.big_image, cv2.COLOR_BGR2GRAY)
+
+        orb = cv2.ORB_create()
+        kp1, des1 = orb.detectAndCompute(single_gray, None)
+        kp2, des2 = orb.detectAndCompute(big_gray, None)
+        if des1 is None or des2 is None:
+            return None, None
+
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+        matches = bf.knnMatch(des1, des2, k=2)
+
+        good = []
+        for m, n in matches:
+            if m.distance < 0.75 * n.distance:
+                good.append(m)
+
+        if len(good) < 4:
+            return None, None
+
+        src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+
+        M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        if M is None:
+            return None, None
+
+        h, w = single_gray.shape
+        pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+        dst = cv2.perspectiveTransform(pts, M)
+
+        x_coords = dst[:, 0, 0]
+        y_coords = dst[:, 0, 1]
+        top_left = (int(min(x_coords)), int(min(y_coords)))
+        bottom_right = (int(max(x_coords)), int(max(y_coords)))
+
+        if show_preview:
+            preview = self.big_image.copy()
+            cv2.polylines(preview, [np.int32(dst)], True, (0, 255, 0), 2)
+            cv2.imshow('Located Image', preview)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
+        return top_left, bottom_right
     
     def match(self, single_image_path, mode=cv2.TM_CCOEFF_NORMED, show_preview=False):
         single_image = cv2.imread(single_image_path)
@@ -59,27 +111,102 @@ def match_images(layer_image, other_images, mode=cv2.TM_CCOEFF_NORMED, show_prev
             }
     return matches
 
+def match_images_with_order(layer_image, other_images, show_preview=False):
+    """Match images allowing occlusion and calculate layering order."""
+    finder = KeyleFinder(layer_image)
+    matches = {}
+    path_map = {}
+    for other_image in other_images:
+        top_left, bottom_right = finder.match_feature(other_image, show_preview)
+        if top_left is not None and bottom_right is not None:
+            name = os.path.basename(other_image)
+            path_map[name] = other_image
+            matches[name] = {
+                "top_left": {"x": top_left[0], "y": top_left[1]},
+                "bottom_right": {"x": bottom_right[0], "y": bottom_right[1]}
+            }
+
+    order = determine_layer_order(finder.big_image, matches, path_map)
+    return matches, order
+
+def determine_layer_order(big_image, matches, path_map):
+    """Determine front/back order based on overlap."""
+    names = list(matches.keys())
+    levels = {name: 0 for name in names}
+
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            n1, n2 = names[i], names[j]
+            top = compare_overlap(big_image, matches[n1], path_map[n1], matches[n2], path_map[n2])
+            if top == n1:
+                levels[n1] = max(levels[n1], levels[n2] + 1)
+            elif top == n2:
+                levels[n2] = max(levels[n2], levels[n1] + 1)
+
+    ordered = sorted(names, key=lambda n: levels[n])
+    return ordered
+
+def compare_overlap(big_image, box1, path1, box2, path2):
+    x1 = max(box1["top_left"]["x"], box2["top_left"]["x"])
+    y1 = max(box1["top_left"]["y"], box2["top_left"]["y"])
+    x2 = min(box1["bottom_right"]["x"], box2["bottom_right"]["x"])
+    y2 = min(box1["bottom_right"]["y"], box2["bottom_right"]["y"])
+    if x1 >= x2 or y1 >= y2:
+        return None
+
+    big_patch = big_image[y1:y2, x1:x2]
+    if big_patch.size == 0:
+        return None
+
+    img1 = cv2.imread(path1)
+    img2 = cv2.imread(path2)
+
+    p1 = img1[y1 - box1["top_left"]["y"]:y2 - box1["top_left"]["y"], x1 - box1["top_left"]["x"]:x2 - box1["top_left"]["x"]]
+    p2 = img2[y1 - box2["top_left"]["y"]:y2 - box2["top_left"]["y"], x1 - box2["top_left"]["x"]:x2 - box2["top_left"]["x"]]
+
+    if p1.size == 0 or p2.size == 0:
+        return None
+
+    g_big = cv2.cvtColor(big_patch, cv2.COLOR_BGR2GRAY)
+    g1 = cv2.cvtColor(p1, cv2.COLOR_BGR2GRAY)
+    g2 = cv2.cvtColor(p2, cv2.COLOR_BGR2GRAY)
+
+    diff1 = np.sum(np.abs(g_big.astype("float") - g1.astype("float")))
+    diff2 = np.sum(np.abs(g_big.astype("float") - g2.astype("float")))
+
+    if diff1 < diff2:
+        return os.path.basename(path1)
+    elif diff2 < diff1:
+        return os.path.basename(path2)
+    else:
+        return None
+
 def save_matches(matches, output_file):
     with open(output_file, 'w') as f:
         json.dump(matches, f, indent=4)
 
-def process_directory(directory=os.getcwd(), recursive=True, show_preview=False):
+def process_directory(directory=os.getcwd(), recursive=True, show_preview=False, use_feature=False):
     layer_images, other_images = find_layer_images(directory)
-    # 对其他图片按照像素尺寸进行排序
     other_images.sort(key=lambda x: get_image_size(x), reverse=True)
-    # 默认模式: TM_CCOEFF_NORMED
+
     for layer_image in layer_images:
         output_file = os.path.join(os.path.dirname(layer_image), "layer.txt")
-        # 删除之前的同名文件
         if os.path.exists(output_file):
             os.remove(output_file)
-        matches = match_images(layer_image, other_images, cv2.TM_CCOEFF_NORMED, show_preview)
-        save_matches(matches, output_file)
+
+        if use_feature:
+            matches, order = match_images_with_order(layer_image, other_images, show_preview)
+            result = {"matches": matches, "order": order}
+        else:
+            matches = match_images(layer_image, other_images, cv2.TM_CCOEFF_NORMED, show_preview)
+            result = matches
+
+        save_matches(result, output_file)
     
     if recursive:
         for root, dirs, _ in os.walk(directory):
             for dir_name in dirs:
-                process_directory(os.path.join(root, dir_name), recursive=True, show_preview=show_preview)
+                process_directory(os.path.join(root, dir_name), recursive=True, show_preview=show_preview, use_feature=use_feature)
 
 def get_image_size(image_path):
     img = cv2.imread(image_path)
@@ -90,4 +217,5 @@ def get_image_size(image_path):
 
 # 示例用法
 if __name__ == "__main__":
-    process_directory(show_preview=False)
+    # 使用 ORB 特征匹配并计算图层顺序
+    process_directory(show_preview=False, use_feature=True)
