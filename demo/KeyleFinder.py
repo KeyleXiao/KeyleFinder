@@ -82,7 +82,7 @@ class KeyleFinder:
         """
         single_image = cv2.imread(single_image_path)
         if single_image is None or self.big_image is None:
-            return None, None, None
+            return None, None, None, None
 
         single_gray = cv2.cvtColor(single_image, cv2.COLOR_BGR2GRAY)
         big_gray = cv2.cvtColor(self.big_image, cv2.COLOR_BGR2GRAY)
@@ -91,7 +91,7 @@ class KeyleFinder:
         kp1, des1 = orb.detectAndCompute(single_gray, None)
         kp2, des2 = orb.detectAndCompute(big_gray, None)
         if des1 is None or des2 is None:
-            return None, None, None
+            return None, None, None, None
 
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
         matches = bf.knnMatch(des1, des2, k=2)
@@ -102,14 +102,14 @@ class KeyleFinder:
                 good.append(m)
 
         if len(good) < 4:
-            return None, None, None
+            return None, None, None, None
 
         src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         if M is None:
-            return None, None, None
+            return None, None, None, None
 
         h, w = single_gray.shape
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
