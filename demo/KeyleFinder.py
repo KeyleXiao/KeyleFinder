@@ -1,5 +1,10 @@
 import os
-import cv2
+try:
+    import cv2
+except ImportError as exc:  # pragma: no cover - handled at runtime
+    raise ImportError(
+        "OpenCV is required for KeyleFinder. Install it with 'pip install opencv-python-headless'."
+    ) from exc
 import json
 import numpy as np
 
@@ -8,26 +13,47 @@ class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
 
-    def _show_preview(self, single_image, dst_points):
-        """Overlay ``single_image`` on ``self.big_image`` using ``dst_points``.
+    def _show_preview(self, single_image, dst_points, angle=None):
+        """Overlay ``single_image`` on ``self.big_image`` with rotation only.
 
-        ``dst_points`` should contain four corner points of the matched region
-        in clockwise order. The function draws the outline and a cross helper on
-        the preview image for visual verification.
+        ``dst_points`` should contain the four corner points of the matched
+        region in clockwise order. The preview draws the outline of the match and
+        pastes the element rotated to ``angle`` degrees at the center of this
+        region without applying perspective distortion. When ``angle`` is
+        ``None`` it will be estimated from the top edge of ``dst_points``.
         """
+
         preview = self.big_image.copy()
 
-        # Draw contour
+        # outline of matched area
         cv2.polylines(preview, [np.int32(dst_points)], True, (0, 255, 0), 2)
 
-        # Compute perspective transform to warp the element onto the big image
         h, w = single_image.shape[:2]
-        src_pts = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
-        M = cv2.getPerspectiveTransform(src_pts, dst_points.astype(np.float32))
 
-        overlay = cv2.warpPerspective(single_image, M,
-                                      (self.big_image.shape[1],
-                                       self.big_image.shape[0]))
+        if angle is None:
+            dx = dst_points[1][0] - dst_points[0][0]
+            dy = dst_points[1][1] - dst_points[0][1]
+            angle = np.degrees(np.arctan2(dy, dx))
+
+        # compute scale from matched width/height
+        dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
+        dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
+        scale_x = dst_w / w
+        scale_y = dst_h / h
+        scale = (scale_x + scale_y) / 2.0
+
+        # OpenCV uses positive values for counter-clockwise rotation, whereas the
+        # angle derived from the image has clockwise positive orientation.
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, scale)
+
+        center = np.mean(dst_points, axis=0)
+        M[0, 2] += center[0] - w / 2
+        M[1, 2] += center[1] - h / 2
+
+        overlay = cv2.warpAffine(
+            single_image, M,
+            (self.big_image.shape[1], self.big_image.shape[0])
+        )
 
         gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
@@ -84,6 +110,11 @@ class KeyleFinder:
         h, w = single_gray.shape
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
+        # matchFeature 返回的四个角点顺序为
+        # [top-left, bottom-left, bottom-right, top-right]
+        # 为了与 _show_preview 中的旋转计算一致，需要调整为
+        # [top-left, top-right, bottom-right, bottom-left]
+        dst = np.array([dst[0], dst[3], dst[2], dst[1]], dtype=np.float32)
 
         x_coords = dst[:, 0, 0]
         y_coords = dst[:, 0, 1]
@@ -91,12 +122,13 @@ class KeyleFinder:
         bottom_right = (int(max(x_coords)), int(max(y_coords)))
 
         # calculate rotation angle using the vector from the first point to the last
-        dx = dst[3, 0, 0] - dst[0, 0, 0]
-        dy = dst[3, 0, 1] - dst[0, 0, 1]
+        # 取上边缘的两个点计算旋转角度
+        dx = dst[1, 0, 0] - dst[0, 0, 0]
+        dy = dst[1, 0, 1] - dst[0, 0, 1]
         angle = np.degrees(np.arctan2(dy, dx))
 
         if show_preview:
-            self._show_preview(single_image, dst.reshape(4, 2))
+            self._show_preview(single_image, dst.reshape(4, 2), angle)
 
         return top_left, bottom_right, float(angle)
     
@@ -126,7 +158,7 @@ class KeyleFinder:
                 [top_left[0] + w - 1, top_left[1] + h - 1],
                 [top_left[0], top_left[1] + h - 1]
             ])
-            self._show_preview(single_image, dst)
+            self._show_preview(single_image, dst, 0.0)
         
         return top_left, bottom_right, 0.0
 
