@@ -14,7 +14,7 @@ class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
 
-    def _show_preview(self, single_image, dst_points, angle=None, scale=None):
+    def _show_preview(self, single_image, dst_points, angle=None, scale=None, label=None):
         """Preview the match by overlaying ``single_image`` on ``self.big_image``.
 
         ``dst_points`` should contain the four corner points of the matched
@@ -65,6 +65,21 @@ class KeyleFinder:
         # Draw helper cross at the center
         center = tuple(np.mean(dst_points, axis=0).astype(int))
         cv2.drawMarker(preview, center, (255, 0, 0), cv2.MARKER_CROSS, 20, 2)
+
+        if label is not None:
+            x = int(np.min(dst_points[:, 0]))
+            y = int(np.min(dst_points[:, 1])) - 10
+            y = max(y, 0)
+            cv2.putText(
+                preview,
+                label,
+                (x, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
+                1,
+                cv2.LINE_AA,
+            )
 
         cv2.imshow('Located Image', preview)
         cv2.waitKey(0)
@@ -124,7 +139,7 @@ class KeyleFinder:
         scale = float(np.sqrt(M[0, 0] ** 2 + M[1, 0] ** 2))
 
         if show_preview:
-            self._show_preview(single_image, dst.reshape(4, 2), angle, scale)
+            self._show_preview(single_image, dst.reshape(4, 2), angle, scale, label=single_image_path)
 
         return top_left, bottom_right, float(angle), scale
     
@@ -154,7 +169,7 @@ class KeyleFinder:
                 [top_left[0] + w - 1, top_left[1] + h - 1],
                 [top_left[0], top_left[1] + h - 1]
             ])
-            self._show_preview(single_image, dst, 0.0)
+            self._show_preview(single_image, dst, 0.0, label=single_image_path)
         
         return top_left, bottom_right, 0.0
 
