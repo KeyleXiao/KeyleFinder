@@ -170,8 +170,8 @@ class KeyleKitService:
         sub_x = parent_x + offset_x
         sub_y = parent_y + offset_y
 
-        # 打印偏移值
-        print("偏移值：", offset_x, offset_y)
+        # Print the offset values for debugging
+        print("Offset:", offset_x, offset_y)
         # self.send_text.delete("1.0", "end")
         self.send_text.insert(tk.END, f'{offset_x}|{offset_y}\n')
         self.send_message()
