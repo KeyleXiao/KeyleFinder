@@ -14,7 +14,7 @@ class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
 
-    def _show_preview(self, single_image, dst_points, angle=None, scale=None):
+    def _show_preview(self, single_image, dst_points, angle=None, scale=None, label=None, transform=None):
         """Preview the match by overlaying ``single_image`` on ``self.big_image``.
 
         ``dst_points`` should contain the four corner points of the matched
@@ -31,27 +31,29 @@ class KeyleFinder:
 
         h, w = single_image.shape[:2]
 
-        if angle is None:
-            dx = dst_points[1][0] - dst_points[0][0]
-            dy = dst_points[1][1] - dst_points[0][1]
-            angle = np.degrees(np.arctan2(dy, dx))
+        if transform is None:
+            if angle is None:
+                dx = dst_points[1][0] - dst_points[0][0]
+                dy = dst_points[1][1] - dst_points[0][1]
+                angle = np.degrees(np.arctan2(dy, dx))
 
-        if scale is None:
-            dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
-            dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
-            scale_x = dst_w / w
-            scale_y = dst_h / h
-            scale = (scale_x + scale_y) / 2.0
+            if scale is None:
+                dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
+                dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
+                scale_x = dst_w / w
+                scale_y = dst_h / h
+                scale = (scale_x + scale_y) / 2.0
 
-        # Compute affine transform: rotate + scale around the center of the
-        # small image then translate it so that its center aligns with the
-        # detected region center.
-        dst_center = tuple(np.mean(dst_points, axis=0))
-        rot = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
-        rot[0, 2] += dst_center[0] - w / 2
-        rot[1, 2] += dst_center[1] - h / 2
+            # Compute affine transform: rotate + scale around the center of the
+            # small image then translate it so that its center aligns with the
+            # detected region center.
+            dst_center = tuple(np.mean(dst_points, axis=0))
+            transform = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
+            transform[0, 2] += dst_center[0] - w / 2
+            transform[1, 2] += dst_center[1] - h / 2
+
         overlay = cv2.warpAffine(
-            single_image, rot, (self.big_image.shape[1], self.big_image.shape[0])
+            single_image, transform, (self.big_image.shape[1], self.big_image.shape[0])
         )
 
         gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
@@ -65,6 +67,21 @@ class KeyleFinder:
         # Draw helper cross at the center
         center = tuple(np.mean(dst_points, axis=0).astype(int))
         cv2.drawMarker(preview, center, (255, 0, 0), cv2.MARKER_CROSS, 20, 2)
+
+        if label is not None:
+            x = int(np.min(dst_points[:, 0]))
+            y = int(np.min(dst_points[:, 1])) - 10
+            y = max(y, 0)
+            cv2.putText(
+                preview,
+                label,
+                (x, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
+                1,
+                cv2.LINE_AA,
+            )
 
         cv2.imshow('Located Image', preview)
         cv2.waitKey(0)
@@ -124,7 +141,14 @@ class KeyleFinder:
         scale = float(np.sqrt(M[0, 0] ** 2 + M[1, 0] ** 2))
 
         if show_preview:
-            self._show_preview(single_image, dst.reshape(4, 2), angle, scale)
+            self._show_preview(
+                single_image,
+                dst.reshape(4, 2),
+                angle,
+                scale,
+                label=single_image_path,
+                transform=M,
+            )
 
         return top_left, bottom_right, float(angle), scale
     
@@ -154,7 +178,18 @@ class KeyleFinder:
                 [top_left[0] + w - 1, top_left[1] + h - 1],
                 [top_left[0], top_left[1] + h - 1]
             ])
-            self._show_preview(single_image, dst, 0.0)
+            translation = np.float32([
+                [1, 0, top_left[0]],
+                [0, 1, top_left[1]],
+            ])
+            self._show_preview(
+                single_image,
+                dst,
+                0.0,
+                1.0,
+                label=single_image_path,
+                transform=translation,
+            )
         
         return top_left, bottom_right, 0.0
 
