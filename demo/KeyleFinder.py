@@ -99,38 +99,29 @@ class KeyleFinder:
         if len(good) < 4:
             return None, None, None, None
 
-        src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+        src_pts = np.float32([kp1[m.queryIdx].pt for m in good])
+        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good])
 
-        M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        # 使用 estimateAffinePartial2D 计算只包含旋转、平移和等比例缩放的变换，
+        # 避免得到带有透视和梯形拉伸的 homography
+        M, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
         if M is None:
             return None, None, None, None
 
         h, w = single_gray.shape
-        pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
-        dst = cv2.perspectiveTransform(pts, M)
-        # matchFeature 返回的四个角点顺序为
-        # [top-left, bottom-left, bottom-right, top-right]
-        # 为了与 _show_preview 中的旋转计算一致，需要调整为
-        # [top-left, top-right, bottom-right, bottom-left]
-        dst = np.array([dst[0], dst[3], dst[2], dst[1]], dtype=np.float32)
+        pts = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
+        dst = cv2.transform(pts[None, :, :], M)[0]
 
-        x_coords = dst[:, 0, 0]
-        y_coords = dst[:, 0, 1]
+        x_coords = dst[:, 0]
+        y_coords = dst[:, 1]
         top_left = (int(min(x_coords)), int(min(y_coords)))
         bottom_right = (int(max(x_coords)), int(max(y_coords)))
 
         # calculate rotation angle using the vector from the first point to the last
         # 取上边缘的两个点计算旋转角度
-        dx = dst[1, 0, 0] - dst[0, 0, 0]
-        dy = dst[1, 0, 1] - dst[0, 0, 1]
-        angle = np.degrees(np.arctan2(dy, dx))
-
-        dst_w = np.linalg.norm(dst[1] - dst[0])
-        dst_h = np.linalg.norm(dst[3] - dst[0])
-        scale_x = dst_w / w
-        scale_y = dst_h / h
-        scale = float((scale_x + scale_y) / 2.0)
+        # 从估算得到的仿射矩阵中提取旋转角度和缩放比例
+        angle = np.degrees(np.arctan2(M[1, 0], M[0, 0]))
+        scale = float(np.sqrt(M[0, 0] ** 2 + M[1, 0] ** 2))
 
         if show_preview:
             self._show_preview(single_image, dst.reshape(4, 2), angle, scale)
