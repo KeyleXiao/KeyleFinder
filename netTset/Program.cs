@@ -8,7 +8,7 @@ using Newtonsoft;
 
 var netHelper = new NetHelper();
 
-Console.WriteLine("输入端口(先启动KeyleKitService.py脚本)：");
+Console.WriteLine("Enter port (start KeyleKitService.py first):");
 var port = Console.ReadLine();
 
 await netHelper.ConnectAsync("127.0.0.1", int.Parse(port));
@@ -18,7 +18,7 @@ var ta = Task.Run(netHelper.ReceiveMessageAsync, cts.Token);
 
 while (true)
 {
-    Console.WriteLine("输入任意消息回车发送，输入exit退出：");
+    Console.WriteLine("Type a message and press Enter to send, type exit to quit:");
     var content = Console.ReadLine();
 
     // 发送消息给服务器
@@ -43,7 +43,7 @@ while (true)
 }
 // 关闭连接
 netHelper.Close();
-Console.ReadLine(); // 等待用户按下回车键退出
+Console.ReadLine(); // Press Enter to exit
 
 
 public class NetHelper
@@ -62,11 +62,11 @@ public class NetHelper
         {
             await client.ConnectAsync(ipAddress, port);
             stream = client.GetStream();
-            Console.WriteLine("连接到服务器成功");
+            Console.WriteLine("Connected to server");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"无法连接到服务器: {ex.Message}");
+            Console.WriteLine($"Failed to connect to server: {ex.Message}");
         }
     }
 
@@ -79,7 +79,7 @@ public class NetHelper
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"发送消息失败: {ex.Message}");
+            Console.WriteLine($"Failed to send message: {ex.Message}");
         }
     }
 
@@ -91,7 +91,7 @@ public class NetHelper
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"发送消息失败: {ex.Message}");
+            Console.WriteLine($"Failed to send message: {ex.Message}");
         }
     }
 
@@ -102,11 +102,11 @@ public class NetHelper
             byte[] data = new byte[1024 * 1024];
             int bytes = await stream.ReadAsync(data, 0, data.Length);
             string receivedMessage = Encoding.UTF8.GetString(data, 0, bytes);
-            Console.WriteLine("服务器回复：" + receivedMessage);
+            Console.WriteLine("Server reply: " + receivedMessage);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"接收消息失败: {ex.Message}");
+            Console.WriteLine($"Failed to receive message: {ex.Message}");
             return null;
         }
 
@@ -117,6 +117,6 @@ public class NetHelper
     {
         stream.Close();
         client.Close();
-        Console.WriteLine("连接已关闭");
+        Console.WriteLine("Connection closed");
     }
 }

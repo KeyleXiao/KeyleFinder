@@ -95,20 +95,20 @@ class KeyleFinder:
             cv2.drawMarker(preview, center, (255, 0, 0), cv2.MARKER_CROSS, 20, 2)
 
             if label is not None:
-                x = int(np.min(dst_points[:, 0]))
-                y = int(np.min(dst_points[:, 1])) - 10
-                y = max(y, 0)
+                # Always display the path label in the upper left corner so it
+                # does not overlap the previewed image. Long paths will wrap to
+                # the next line automatically.
                 self._draw_multiline_text(
                     preview,
                     label,
-                    (x, y),
+                    (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (0, 0, 255),
                     1,
                 )
         else:
-            text = "未成功匹配" if label is None else f"未成功匹配: {label}"
+            text = "Match failed" if label is None else f"Match failed: {label}"
             self._draw_multiline_text(
                 preview,
                 text,
