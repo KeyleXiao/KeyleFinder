@@ -84,6 +84,11 @@ class KeyleFinder:
         h, w = single_gray.shape
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
+        # matchFeature 返回的四个角点顺序为
+        # [top-left, bottom-left, bottom-right, top-right]
+        # 为了与 _show_preview 中的透视变换一致，需要调整为
+        # [top-left, top-right, bottom-right, bottom-left]
+        dst = np.array([dst[0], dst[3], dst[2], dst[1]], dtype=np.float32)
 
         x_coords = dst[:, 0, 0]
         y_coords = dst[:, 0, 1]
@@ -91,8 +96,9 @@ class KeyleFinder:
         bottom_right = (int(max(x_coords)), int(max(y_coords)))
 
         # calculate rotation angle using the vector from the first point to the last
-        dx = dst[3, 0, 0] - dst[0, 0, 0]
-        dy = dst[3, 0, 1] - dst[0, 0, 1]
+        # 取上边缘的两个点计算旋转角度
+        dx = dst[1, 0, 0] - dst[0, 0, 0]
+        dy = dst[1, 0, 1] - dst[0, 0, 1]
         angle = np.degrees(np.arctan2(dy, dx))
 
         if show_preview:
