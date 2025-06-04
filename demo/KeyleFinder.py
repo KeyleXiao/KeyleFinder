@@ -14,73 +14,109 @@ class KeyleFinder:
     def __init__(self, big_image_path):
         self.big_image = cv2.imread(big_image_path)
 
-    def _show_preview(self, single_image, dst_points, angle=None, scale=None, label=None, transform=None):
+    @staticmethod
+    def _draw_multiline_text(img, text, org, font, scale, color, thickness=1, line_type=cv2.LINE_AA):
+        """Draw text that automatically wraps when exceeding image width."""
+        if text is None:
+            return
+        x, y = org
+        max_width = img.shape[1] - x - 10
+
+        current = ""
+        lines = []
+        for ch in text:
+            if ch == "\n":
+                lines.append(current)
+                current = ""
+                continue
+            size = cv2.getTextSize(current + ch, font, scale, thickness)[0][0]
+            if size > max_width and current:
+                lines.append(current)
+                current = ch
+            else:
+                current += ch
+        if current:
+            lines.append(current)
+
+        line_height = cv2.getTextSize("A", font, scale, thickness)[0][1] + 5
+        for idx, ln in enumerate(lines):
+            cv2.putText(img, ln, (x, y + idx * line_height), font, scale, color, thickness, line_type)
+
+    def _show_preview(self, single_image=None, dst_points=None, angle=None, scale=None, label=None, transform=None, found=True):
         """Preview the match by overlaying ``single_image`` on ``self.big_image``.
 
         ``dst_points`` should contain the four corner points of the matched
         region in clockwise order. ``angle`` and ``scale`` are kept for backward
         compatibility but the overlay is generated using an affine
         transformation (rotation + uniform scale) so that the overlay is not
-        distorted by perspective.
+        distorted by perspective. When ``found`` is False, only ``label`` is
+        drawn on the big image to indicate the match was not successful.
         """
 
         preview = self.big_image.copy()
 
-        # outline of matched area
-        cv2.polylines(preview, [np.int32(dst_points)], True, (0, 255, 0), 2)
+        if found and dst_points is not None and single_image is not None:
+            # outline of matched area
+            cv2.polylines(preview, [np.int32(dst_points)], True, (0, 255, 0), 2)
 
-        h, w = single_image.shape[:2]
+            h, w = single_image.shape[:2]
 
-        if transform is None:
-            if angle is None:
-                dx = dst_points[1][0] - dst_points[0][0]
-                dy = dst_points[1][1] - dst_points[0][1]
-                angle = np.degrees(np.arctan2(dy, dx))
+            if transform is None:
+                if angle is None:
+                    dx = dst_points[1][0] - dst_points[0][0]
+                    dy = dst_points[1][1] - dst_points[0][1]
+                    angle = np.degrees(np.arctan2(dy, dx))
 
-            if scale is None:
-                dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
-                dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
-                scale_x = dst_w / w
-                scale_y = dst_h / h
-                scale = (scale_x + scale_y) / 2.0
+                if scale is None:
+                    dst_w = np.linalg.norm(dst_points[1] - dst_points[0])
+                    dst_h = np.linalg.norm(dst_points[3] - dst_points[0])
+                    scale_x = dst_w / w
+                    scale_y = dst_h / h
+                    scale = (scale_x + scale_y) / 2.0
 
-            # Compute affine transform: rotate + scale around the center of the
-            # small image then translate it so that its center aligns with the
-            # detected region center.
-            dst_center = tuple(np.mean(dst_points, axis=0))
-            transform = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
-            transform[0, 2] += dst_center[0] - w / 2
-            transform[1, 2] += dst_center[1] - h / 2
+                dst_center = tuple(np.mean(dst_points, axis=0))
+                transform = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
+                transform[0, 2] += dst_center[0] - w / 2
+                transform[1, 2] += dst_center[1] - h / 2
 
-        overlay = cv2.warpAffine(
-            single_image, transform, (self.big_image.shape[1], self.big_image.shape[0])
-        )
+            overlay = cv2.warpAffine(
+                single_image, transform, (self.big_image.shape[1], self.big_image.shape[0])
+            )
 
-        gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
-        _, mask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
-        inv_mask = cv2.bitwise_not(mask)
+            gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
+            _, mask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+            inv_mask = cv2.bitwise_not(mask)
 
-        bg = cv2.bitwise_and(preview, preview, mask=inv_mask)
-        fg = cv2.bitwise_and(overlay, overlay, mask=mask)
-        preview = cv2.add(bg, fg)
+            bg = cv2.bitwise_and(preview, preview, mask=inv_mask)
+            fg = cv2.bitwise_and(overlay, overlay, mask=mask)
+            preview = cv2.add(bg, fg)
 
-        # Draw helper cross at the center
-        center = tuple(np.mean(dst_points, axis=0).astype(int))
-        cv2.drawMarker(preview, center, (255, 0, 0), cv2.MARKER_CROSS, 20, 2)
+            center = tuple(np.mean(dst_points, axis=0).astype(int))
+            cv2.drawMarker(preview, center, (255, 0, 0), cv2.MARKER_CROSS, 20, 2)
 
-        if label is not None:
-            x = int(np.min(dst_points[:, 0]))
-            y = int(np.min(dst_points[:, 1])) - 10
-            y = max(y, 0)
-            cv2.putText(
+            if label is not None:
+                x = int(np.min(dst_points[:, 0]))
+                y = int(np.min(dst_points[:, 1])) - 10
+                y = max(y, 0)
+                self._draw_multiline_text(
+                    preview,
+                    label,
+                    (x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 0, 255),
+                    1,
+                )
+        else:
+            text = "未成功匹配" if label is None else f"未成功匹配: {label}"
+            self._draw_multiline_text(
                 preview,
-                label,
-                (x, y),
+                text,
+                (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.7,
                 (0, 0, 255),
-                1,
-                cv2.LINE_AA,
+                2,
             )
 
         cv2.imshow('Located Image', preview)
@@ -94,6 +130,8 @@ class KeyleFinder:
         """
         single_image = cv2.imread(single_image_path)
         if single_image is None or self.big_image is None:
+            if show_preview:
+                self._show_preview(label=single_image_path, found=False)
             return None, None, None, None
 
         single_gray = cv2.cvtColor(single_image, cv2.COLOR_BGR2GRAY)
@@ -103,6 +141,8 @@ class KeyleFinder:
         kp1, des1 = orb.detectAndCompute(single_gray, None)
         kp2, des2 = orb.detectAndCompute(big_gray, None)
         if des1 is None or des2 is None:
+            if show_preview:
+                self._show_preview(label=single_image_path, found=False)
             return None, None, None, None
 
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
@@ -114,6 +154,8 @@ class KeyleFinder:
                 good.append(m)
 
         if len(good) < 4:
+            if show_preview:
+                self._show_preview(label=single_image_path, found=False)
             return None, None, None, None
 
         src_pts = np.float32([kp1[m.queryIdx].pt for m in good])
@@ -123,6 +165,8 @@ class KeyleFinder:
         # 避免得到带有透视和梯形拉伸的 homography
         M, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
         if M is None:
+            if show_preview:
+                self._show_preview(label=single_image_path, found=False)
             return None, None, None, None
 
         h, w = single_gray.shape
@@ -154,12 +198,19 @@ class KeyleFinder:
     
     def match(self, single_image_path, mode=cv2.TM_CCOEFF_NORMED, show_preview=True):
         single_image = cv2.imread(single_image_path)
+        if single_image is None or self.big_image is None:
+            if show_preview:
+                self._show_preview(label=single_image_path, found=False)
+            return None, None, None
+
         result = cv2.matchTemplate(self.big_image, single_image, mode)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         
         # 如果最大匹配值小于阈值，则认为没有找到匹配的位置
         threshold = 0.8  # 设置阈值
         if max_val < threshold:
+            if show_preview:
+                self._show_preview(label=single_image_path, found=False)
             return None, None, None
         
         top_left = max_loc
