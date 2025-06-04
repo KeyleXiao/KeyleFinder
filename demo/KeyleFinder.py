@@ -9,10 +9,13 @@ class KeyleFinder:
         self.big_image = cv2.imread(big_image_path)
 
     def match_feature(self, single_image_path, show_preview=False):
-        """Match image using ORB feature detection, allowing partial occlusion."""
+        """Match image using ORB feature detection, allowing partial occlusion.
+        Returns the bounding box of the matched area and the rotation angle
+        (in degrees) of the found image relative to its original orientation.
+        """
         single_image = cv2.imread(single_image_path)
         if single_image is None or self.big_image is None:
-            return None, None
+            return None, None, None
 
         single_gray = cv2.cvtColor(single_image, cv2.COLOR_BGR2GRAY)
         big_gray = cv2.cvtColor(self.big_image, cv2.COLOR_BGR2GRAY)
@@ -21,7 +24,7 @@ class KeyleFinder:
         kp1, des1 = orb.detectAndCompute(single_gray, None)
         kp2, des2 = orb.detectAndCompute(big_gray, None)
         if des1 is None or des2 is None:
-            return None, None
+            return None, None, None
 
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
         matches = bf.knnMatch(des1, des2, k=2)
@@ -32,14 +35,14 @@ class KeyleFinder:
                 good.append(m)
 
         if len(good) < 4:
-            return None, None
+            return None, None, None
 
         src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         if M is None:
-            return None, None
+            return None, None, None
 
         h, w = single_gray.shape
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
@@ -50,6 +53,11 @@ class KeyleFinder:
         top_left = (int(min(x_coords)), int(min(y_coords)))
         bottom_right = (int(max(x_coords)), int(max(y_coords)))
 
+        # calculate rotation angle using the vector from the first point to the last
+        dx = dst[3, 0, 0] - dst[0, 0, 0]
+        dy = dst[3, 0, 1] - dst[0, 0, 1]
+        angle = np.degrees(np.arctan2(dy, dx))
+
         if show_preview:
             preview = self.big_image.copy()
             cv2.polylines(preview, [np.int32(dst)], True, (0, 255, 0), 2)
@@ -57,7 +65,7 @@ class KeyleFinder:
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
-        return top_left, bottom_right
+        return top_left, bottom_right, float(angle)
     
     def match(self, single_image_path, mode=cv2.TM_CCOEFF_NORMED, show_preview=False):
         single_image = cv2.imread(single_image_path)
@@ -67,7 +75,7 @@ class KeyleFinder:
         # 如果最大匹配值小于阈值，则认为没有找到匹配的位置
         threshold = 0.8  # 设置阈值
         if max_val < threshold:
-            return None, None
+            return None, None, None
         
         top_left = max_loc
         
@@ -87,7 +95,7 @@ class KeyleFinder:
             cv2.waitKey(0)
             cv2.destroyAllWindows()
         
-        return top_left, bottom_right
+        return top_left, bottom_right, 0.0
 
 def find_layer_images(directory=os.getcwd(), layer_filename="layer.png"):
     layer_images = []
@@ -103,27 +111,31 @@ def match_images(layer_image, other_images, mode=cv2.TM_CCOEFF_NORMED, show_prev
     finder = KeyleFinder(layer_image)
     matches = {}
     for other_image in other_images:
-        top_left, bottom_right = finder.match(other_image, mode, show_preview)
+        top_left, bottom_right, angle = finder.match(other_image, mode, show_preview)
         if top_left is not None and bottom_right is not None:
             matches[os.path.basename(other_image)] = {
                 "top_left": {"x": top_left[0], "y": top_left[1]},
-                "bottom_right": {"x": bottom_right[0], "y": bottom_right[1]}
+                "bottom_right": {"x": bottom_right[0], "y": bottom_right[1]},
+                "angle": angle
             }
     return matches
 
 def match_images_with_order(layer_image, other_images, show_preview=False):
-    """Match images allowing occlusion and calculate layering order."""
+    """Match images allowing occlusion and calculate layering order.
+    The rotation angle of each match is also recorded.
+    """
     finder = KeyleFinder(layer_image)
     matches = {}
     path_map = {}
     for other_image in other_images:
-        top_left, bottom_right = finder.match_feature(other_image, show_preview)
+        top_left, bottom_right, angle = finder.match_feature(other_image, show_preview)
         if top_left is not None and bottom_right is not None:
             name = os.path.basename(other_image)
             path_map[name] = other_image
             matches[name] = {
                 "top_left": {"x": top_left[0], "y": top_left[1]},
-                "bottom_right": {"x": bottom_right[0], "y": bottom_right[1]}
+                "bottom_right": {"x": bottom_right[0], "y": bottom_right[1]},
+                "angle": angle
             }
 
     order = determine_layer_order(finder.big_image, matches, path_map)
@@ -217,5 +229,5 @@ def get_image_size(image_path):
 
 # 示例用法
 if __name__ == "__main__":
-    # 使用 ORB 特征匹配并计算图层顺序
+    # 使用 ORB 特征匹配并计算图层顺序，结果将包含每个切片在大图中的旋转角度
     process_directory(show_preview=False, use_feature=True)
