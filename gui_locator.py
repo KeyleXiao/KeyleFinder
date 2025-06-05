@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 import tempfile
 import os
@@ -9,7 +9,8 @@ import time
 
 from KeyleFinderModule import KeyleFinderModule
 
-HOTKEY = 'F2'  # Configurable hotkey
+HOTKEY = 'F2'  # Default hotkey
+HOTKEY_OPTIONS = [f'F{i}' for i in range(1, 13)]
 
 
 class ScreenCropper(tk.Toplevel):
@@ -65,14 +66,42 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title('Image Locator')
-        self.geometry('200x230')
+        self.geometry('240x320')
         self.resizable(False, False)
+
+        ttk.Style(self).theme_use('clam')
+
         self.sub_img_path = None
-        self.photo_label = tk.Label(self, text='No Image')
-        self.photo_label.place(x=0, y=30, width=200, height=200)
-        load_btn = tk.Button(self, text='Load Image', command=self.load_image)
-        load_btn.place(x=40, y=0, width=120, height=25)
-        keyboard.add_hotkey(HOTKEY, self.trigger_search)
+        self.debug_var = tk.BooleanVar(value=False)
+        self.hotkey_var = tk.StringVar(value=HOTKEY)
+
+        top = ttk.Frame(self)
+        top.pack(fill='x', pady=5)
+
+        load_btn = ttk.Button(top, text='Load Image', command=self.load_image)
+        load_btn.pack(side='left', padx=5)
+
+        ttk.Label(top, text='Hotkey:').pack(side='left')
+        hotkey_combo = ttk.Combobox(top, width=4, state='readonly',
+                                    values=HOTKEY_OPTIONS, textvariable=self.hotkey_var)
+        hotkey_combo.pack(side='left', padx=5)
+
+        debug_check = ttk.Checkbutton(top, text='Debug', variable=self.debug_var)
+        debug_check.pack(side='left', padx=5)
+
+        about_btn = ttk.Button(top, text='About', command=self.show_about)
+        about_btn.pack(side='right', padx=5)
+
+        self.photo_label = ttk.Label(self, text='No Image', relief='groove')
+        self.photo_label.pack(padx=10, pady=5, fill='both', expand=True)
+
+        self.info_label = ttk.Label(self,
+                                    text='Locate a captured image on your screen.\nPress the hotkey to start.',
+                                    font=('Arial', 9))
+        self.info_label.pack(side='bottom', pady=5)
+
+        self.hotkey_var.trace_add('write', self.update_hotkey)
+        keyboard.add_hotkey(self.hotkey_var.get(), self.trigger_search)
         self.protocol('WM_DELETE_WINDOW', self.on_close)
 
     def load_image(self):
@@ -93,6 +122,13 @@ class App(tk.Tk):
         self.tk_img = ImageTk.PhotoImage(img)
         self.photo_label.config(image=self.tk_img, text='')
 
+    def update_hotkey(self, *_):
+        keyboard.clear_all_hotkeys()
+        keyboard.add_hotkey(self.hotkey_var.get(), self.trigger_search)
+
+    def show_about(self):
+        messagebox.showinfo('About', 'KeyleFinder\nAuthor: keyle\nhttps://vrast.cn')
+
     def trigger_search(self):
         if not self.sub_img_path:
             messagebox.showwarning('Warning', 'Load sub image first')
@@ -104,7 +140,7 @@ class App(tk.Tk):
             screenshot = pyautogui.screenshot()
             screenshot.save(tmp.name)
             finder = KeyleFinderModule(tmp.name)
-            result = finder.locate(self.sub_img_path, debug=True)
+            result = finder.locate(self.sub_img_path, debug=self.debug_var.get())
         os.unlink(tmp.name)
         self.deiconify()
         if result.get('status') == 0:
