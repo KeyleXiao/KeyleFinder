@@ -21,6 +21,12 @@ Search for the coordinates of subgraphs in the parent graph
 目前看下来准确率非常高，后面有空就在fairygui，或者ugui中实现一版，自动拼图工具。
 新版在 ORB 特征点不足时会自动回落到模板匹配，在直接截图的情况下更容易成功匹配。
 
+## GUI 功能
+
+* 可以从主界面导入、导出子项信息，便于重复使用。
+* 底部新增日志栏显示匹配结果。
+* 设置面板加入 "循环执行" 选项，红色字体提示该行为危险。
+
 
 
 运行 KeyleFinder.py 即可，需要提前安装好 opencv-python，如果没有用下面代码安装下
