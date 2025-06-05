@@ -152,6 +152,8 @@ class App(tk.Tk):
             center_x = (tl[0] + br[0]) // 2
             center_y = (tl[1] + br[1]) // 2
             pyautogui.moveTo(center_x, center_y)
+            # Perform a single left click at the located position
+            pyautogui.click()
         else:
             messagebox.showinfo('Result', 'Match failed')
 
