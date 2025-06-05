@@ -73,21 +73,20 @@ class App(tk.Tk):
 
         self.sub_img_path = None
         self.debug_var = tk.BooleanVar(value=False)
+        self.auto_start_var = tk.BooleanVar(value=False)
         self.hotkey_var = tk.StringVar(value=HOTKEY)
 
         top = ttk.Frame(self)
         top.pack(fill='x', pady=5)
 
-        load_btn = ttk.Button(top, text='Load Image', command=self.load_image)
-        load_btn.pack(side='left', padx=5)
+        load_btn = ttk.Button(top, text='📂', width=3, command=self.load_image)
+        load_btn.pack(side='left', padx=2)
 
-        ttk.Label(top, text='Hotkey:').pack(side='left')
-        hotkey_combo = ttk.Combobox(top, width=4, state='readonly',
-                                    values=HOTKEY_OPTIONS, textvariable=self.hotkey_var)
-        hotkey_combo.pack(side='left', padx=5)
+        start_btn = ttk.Button(top, text='▶', width=3, command=self.trigger_search)
+        start_btn.pack(side='left', padx=2)
 
-        debug_check = ttk.Checkbutton(top, text='Debug', variable=self.debug_var)
-        debug_check.pack(side='left', padx=5)
+        setting_btn = ttk.Button(top, text='⚙', width=3, command=self.open_settings)
+        setting_btn.pack(side='left', padx=2)
 
         about_btn = ttk.Button(top, text='About', command=self.show_about)
         about_btn.pack(side='right', padx=5)
@@ -95,9 +94,11 @@ class App(tk.Tk):
         self.photo_label = ttk.Label(self, text='No Image', relief='groove')
         self.photo_label.pack(padx=10, pady=5, fill='both', expand=True)
 
-        self.info_label = ttk.Label(self,
-                                    text='Locate a captured image on your screen.\nPress the hotkey to start.',
-                                    font=('Arial', 9))
+        self.info_label = ttk.Label(
+            self,
+            text='Locate a captured image on your screen.\nPress start or the hotkey to begin.',
+            font=('Arial', 9),
+        )
         self.info_label.pack(side='bottom', pady=5)
 
         self.hotkey_var.trace_add('write', self.update_hotkey)
@@ -123,6 +124,8 @@ class App(tk.Tk):
         img.thumbnail((200, 200))
         self.tk_img = ImageTk.PhotoImage(img)
         self.photo_label.config(image=self.tk_img, text='')
+        if self.auto_start_var.get():
+            self.trigger_search()
 
     def update_hotkey(self, *_):
         keyboard.clear_all_hotkeys()
@@ -130,6 +133,17 @@ class App(tk.Tk):
 
     def show_about(self):
         messagebox.showinfo('About', 'KeyleFinder\nAuthor: keyle\nhttps://vrast.cn')
+
+    def open_settings(self):
+        win = tk.Toplevel(self)
+        win.title('Settings')
+        win.resizable(False, False)
+        ttk.Checkbutton(win, text='Debug', variable=self.debug_var).pack(anchor='w', padx=10, pady=5)
+        ttk.Checkbutton(win, text='Auto Start', variable=self.auto_start_var).pack(anchor='w', padx=10, pady=5)
+        ttk.Label(win, text='Hotkey:').pack(anchor='w', padx=10, pady=(10, 0))
+        ttk.Combobox(win, width=4, state='readonly',
+                     values=HOTKEY_OPTIONS, textvariable=self.hotkey_var).pack(anchor='w', padx=10, pady=5)
+        ttk.Button(win, text='Close', command=win.destroy).pack(pady=10)
 
     def trigger_search(self):
         if not self.sub_img_path:
