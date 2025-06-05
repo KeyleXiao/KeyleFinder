@@ -1,11 +1,13 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from PIL import Image, ImageTk
 import tempfile
 import os
 import pyautogui
 import keyboard
 import time
+import json
+import base64
 
 from KeyleFinderModule import KeyleFinderModule
 
@@ -75,6 +77,8 @@ class App(tk.Tk):
         self.debug_var = tk.BooleanVar(value=False)
         self.auto_start_var = tk.BooleanVar(value=False)
         self.hotkey_var = tk.StringVar(value=HOTKEY)
+        self.loop_var = tk.BooleanVar(value=False)
+        self.log_var = tk.StringVar(value='')
 
         top = ttk.Frame(self)
         top.pack(fill='x', pady=5)
@@ -84,6 +88,12 @@ class App(tk.Tk):
 
         start_btn = ttk.Button(top, text='▶', width=3, command=self.trigger_search)
         start_btn.pack(side='left', padx=2)
+
+        export_btn = ttk.Button(top, text='📤', width=3, command=self.export_data)
+        export_btn.pack(side='left', padx=2)
+
+        import_btn = ttk.Button(top, text='📥', width=3, command=self.import_data)
+        import_btn.pack(side='left', padx=2)
 
         setting_btn = ttk.Button(top, text='⚙', width=3, command=self.open_settings)
         setting_btn.pack(side='left', padx=2)
@@ -99,11 +109,17 @@ class App(tk.Tk):
             text='Locate a captured image on your screen.\nPress start or the hotkey to begin.',
             font=('Arial', 9),
         )
+        self.log_label = ttk.Label(self, textvariable=self.log_var, font=('Arial', 9))
+        self.log_label.pack(side='bottom', pady=(0, 5))
+
         self.info_label.pack(side='bottom', pady=5)
 
         self.hotkey_var.trace_add('write', self.update_hotkey)
         keyboard.add_hotkey(self.hotkey_var.get(), self.trigger_search)
         self.protocol('WM_DELETE_WINDOW', self.on_close)
+
+    def log(self, msg: str):
+        self.log_var.set(msg)
 
     def load_image(self):
         # Minimize to taskbar instead of fully hiding so the user can
@@ -134,12 +150,58 @@ class App(tk.Tk):
     def show_about(self):
         messagebox.showinfo('About', 'KeyleFinder\nAuthor: keyle\nhttps://vrast.cn')
 
+    def export_data(self):
+        if not self.sub_img_path:
+            messagebox.showwarning('Warning', 'Load sub image first')
+            return
+        path = filedialog.asksaveasfilename(defaultextension='.json',
+                                            filetypes=[('JSON', '*.json')])
+        if not path:
+            return
+        with open(self.sub_img_path, 'rb') as f:
+            img_b64 = base64.b64encode(f.read()).decode('utf-8')
+        data = {
+            'image': img_b64,
+            'debug': self.debug_var.get(),
+            'auto_start': self.auto_start_var.get(),
+            'hotkey': self.hotkey_var.get(),
+            'loop': self.loop_var.get(),
+        }
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+        self.log('Exported to ' + os.path.basename(path))
+
+    def import_data(self):
+        path = filedialog.askopenfilename(filetypes=[('JSON', '*.json')])
+        if not path:
+            return
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        img_b64 = data.get('image')
+        if img_b64:
+            img_data = base64.b64decode(img_b64)
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+            tmp.write(img_data)
+            tmp.close()
+            self.sub_img_path = tmp.name
+            img = Image.open(tmp.name)
+            img.thumbnail((200, 200))
+            self.tk_img = ImageTk.PhotoImage(img)
+            self.photo_label.config(image=self.tk_img, text='')
+        self.debug_var.set(data.get('debug', False))
+        self.auto_start_var.set(data.get('auto_start', False))
+        self.loop_var.set(data.get('loop', False))
+        if 'hotkey' in data:
+            self.hotkey_var.set(data['hotkey'])
+        self.log('Imported from ' + os.path.basename(path))
+
     def open_settings(self):
         win = tk.Toplevel(self)
         win.title('Settings')
         win.resizable(False, False)
         ttk.Checkbutton(win, text='Debug', variable=self.debug_var).pack(anchor='w', padx=10, pady=5)
         ttk.Checkbutton(win, text='Auto Start', variable=self.auto_start_var).pack(anchor='w', padx=10, pady=5)
+        tk.Checkbutton(win, text='Loop Execute (Dangerous!)', fg='red', variable=self.loop_var).pack(anchor='w', padx=10, pady=5)
         ttk.Label(win, text='Hotkey:').pack(anchor='w', padx=10, pady=(10, 0))
         ttk.Combobox(win, width=4, state='readonly',
                      values=HOTKEY_OPTIONS, textvariable=self.hotkey_var).pack(anchor='w', padx=10, pady=5)
@@ -168,8 +230,11 @@ class App(tk.Tk):
             pyautogui.moveTo(center_x, center_y)
             # Perform a single left click at the located position
             pyautogui.click()
+            self.log('Match success')
         else:
-            messagebox.showinfo('Result', 'Match failed')
+            self.log('Match failed')
+        if self.loop_var.get():
+            self.after(100, self.trigger_search)
 
     def on_close(self):
         keyboard.clear_all_hotkeys()
