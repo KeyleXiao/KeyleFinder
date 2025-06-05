@@ -114,13 +114,36 @@ class KeyleFinderModule:
         scale = float(np.sqrt(M[0, 0] ** 2 + M[1, 0] ** 2))
         return top_left, bottom_right, angle, scale, single_image, dst.reshape(4, 2), M
 
+    def _match_template(self, single_image_path, threshold: float = 0.8):
+        """Fallback template matching when feature matching fails."""
+        single_image = cv2.imread(single_image_path)
+        if single_image is None or self.big_image is None:
+            return None
+        result = cv2.matchTemplate(self.big_image, single_image, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        if max_val < threshold:
+            return None
+        h, w = single_image.shape[:2]
+        top_left = max_loc
+        bottom_right = (top_left[0] + w, top_left[1] + h)
+        dst = np.float32([
+            [top_left[0], top_left[1]],
+            [top_left[0] + w - 1, top_left[1]],
+            [top_left[0] + w - 1, top_left[1] + h - 1],
+            [top_left[0], top_left[1] + h - 1],
+        ])
+        transform = np.float32([[1, 0, top_left[0]], [0, 1, top_left[1]]])
+        return top_left, bottom_right, 0.0, 1.0, single_image, dst, transform
+
     def locate(self, sub_image_path: str, debug: bool = False):
         match = self._match_feature(sub_image_path)
         if match is None:
-            result = {"status": 1}
-            if debug:
-                self._show_preview(label=json.dumps(result, ensure_ascii=False), found=False)
-            return result
+            match = self._match_template(sub_image_path)
+            if match is None:
+                result = {"status": 1}
+                if debug:
+                    self._show_preview(label=json.dumps(result, ensure_ascii=False), found=False)
+                return result
 
         top_left, bottom_right, angle, scale, img, pts, M = match
         result = {
