@@ -73,7 +73,7 @@ class App(tk.Tk):
 
         ttk.Style(self).theme_use('clam')
 
-        self.items = []
+        self.items = []  # each item is {'path': path, 'double_click': False}
         self.debug_var = tk.BooleanVar(value=False)
         self.auto_start_var = tk.BooleanVar(value=False)
         self.loop_var = tk.BooleanVar(value=False)
@@ -100,8 +100,18 @@ class App(tk.Tk):
         about_btn = ttk.Button(top, text='About', command=self.show_about)
         about_btn.pack(side='right', padx=5)
 
-        self.listbox = tk.Listbox(self, height=8)
-        self.listbox.pack(padx=10, pady=5, fill='x')
+        self.tree = ttk.Treeview(
+            self,
+            columns=('click',),
+            show='tree headings',
+            height=8,
+        )
+        self.tree.heading('#0', text='名称')
+        self.tree.column('#0', width=200)
+        self.tree.heading('click', text='点击')
+        self.tree.column('click', width=60, anchor='center')
+        self.tree.pack(padx=10, pady=5, fill='x')
+        self.tree.bind('<Double-1>', self.on_tree_double_click)
 
         self.photo_label = ttk.Label(self, text='No Image', relief='groove')
         self.photo_label.pack(padx=10, pady=5, fill='both', expand=True)
@@ -121,6 +131,16 @@ class App(tk.Tk):
         self.clipboard_clear()
         self.clipboard_append(self.log_label.cget('text'))
 
+    def on_tree_double_click(self, event):
+        item_id = self.tree.identify_row(event.y)
+        column = self.tree.identify_column(event.x)
+        if not item_id or column != '#1':
+            return
+        idx = self.tree.index(item_id)
+        item = self.items[idx]
+        item['double_click'] = not item.get('double_click', False)
+        self.tree.set(item_id, 'click', '双击' if item['double_click'] else '单击')
+
     def add_item(self):
         self.iconify()
         time.sleep(0.2)
@@ -139,8 +159,8 @@ class App(tk.Tk):
         tk_img = ImageTk.PhotoImage(img)
         self.photo_label.config(image=tk_img, text='')
         self.photo_label.image = tk_img
-        self.items.append({'path': path})
-        self.listbox.insert('end', os.path.basename(path))
+        self.items.append({'path': path, 'double_click': False})
+        self.tree.insert('', 'end', text=os.path.basename(path), values=('单击',))
         if self.auto_start_var.get():
             self.trigger_search()
 
@@ -155,7 +175,7 @@ class App(tk.Tk):
         for item in self.items:
             with open(item['path'], 'rb') as f:
                 encoded = base64.b64encode(f.read()).decode('utf-8')
-            data.append({'image': encoded})
+            data.append({'image': encoded, 'double_click': item.get('double_click', False)})
         with open(file, 'w', encoding='utf-8') as f:
             json.dump(data, f)
         self.log(f'Exported {len(self.items)} items to {file}')
@@ -171,8 +191,10 @@ class App(tk.Tk):
             with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
                 tmp.write(img_data)
                 path = tmp.name
-            self.items.append({'path': path})
-            self.listbox.insert('end', os.path.basename(path))
+            dbl = entry.get('double_click', False)
+            self.items.append({'path': path, 'double_click': dbl})
+            txt = '双击' if dbl else '单击'
+            self.tree.insert('', 'end', text=os.path.basename(path), values=(txt,))
         self.log(f'Imported {len(data)} items from {file}')
 
     def update_hotkey(self, *_):
@@ -216,7 +238,10 @@ class App(tk.Tk):
                     center_x = (tl[0] + br[0]) // 2
                     center_y = (tl[1] + br[1]) // 2
                     pyautogui.moveTo(center_x, center_y)
-                    pyautogui.click()
+                    if item.get('double_click'):
+                        pyautogui.click(clicks=2)
+                    else:
+                        pyautogui.click()
                     self.log(f'Item {idx} matched at {center_x},{center_y}')
                 else:
                     self.log(f'Item {idx} match failed')
