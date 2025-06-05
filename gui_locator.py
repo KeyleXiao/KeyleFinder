@@ -76,7 +76,9 @@ class App(tk.Tk):
         self.protocol('WM_DELETE_WINDOW', self.on_close)
 
     def load_image(self):
-        self.withdraw()
+        # Minimize to taskbar instead of fully hiding so the user can
+        # restore the window manually if needed.
+        self.iconify()
         time.sleep(0.2)
         screenshot = pyautogui.screenshot()
         ScreenCropper(self, screenshot, self.on_crop_done)
@@ -106,13 +108,16 @@ class App(tk.Tk):
             finder = KeyleFinderModule(tmp.name)
             result = finder.locate(self.sub_img_path, debug=True)
         os.unlink(tmp.name)
-        self.deiconify()
+        # Keep the window minimized after locating so the user can
+        # continue working without interruption.
         if result.get('status') == 0:
             tl = result['top_left']
             br = result['bottom_right']
             center_x = (tl[0] + br[0]) // 2
             center_y = (tl[1] + br[1]) // 2
             pyautogui.moveTo(center_x, center_y)
+            # Perform a single left click at the located position
+            pyautogui.click()
         else:
             messagebox.showinfo('Result', 'Match failed')
 
