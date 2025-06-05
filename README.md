@@ -19,6 +19,7 @@ Search for the coordinates of subgraphs in the parent graph
 现在匹配结果还会记录每个切片在大图中的旋转角度，同时提供缩放比例，方便在目标环境中还原原始布局。
 
 目前看下来准确率非常高，后面有空就在fairygui，或者ugui中实现一版，自动拼图工具。
+新版在 ORB 特征点不足时会自动回落到模板匹配，在直接截图的情况下更容易成功匹配。
 
 
 
